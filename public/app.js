@@ -4,7 +4,7 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN');
-const VIEWS = ['find', 'shop', 'prices', 'markets', 'agents', 'cars'];
+const VIEWS = ['find', 'shop', 'prices', 'markets', 'agents', 'cars', 'why'];
 const PREFER = { genuine: 'wants genuine', cheap: 'wants cheapest', fast: 'wants it fast' };
 const CAT_SHORT = { ac: 'AC', fan: 'FAN', mixer: 'MIX', washer: 'WM', geyser: 'GYS', fridge: 'FRG', general: 'PART' };
 const MARKETS = ['Lohar Chawl', 'Lamington Road', 'Grant Road', 'Other Mumbai'];
@@ -136,7 +136,7 @@ function introHTML() {
     + '<li><b>Every matching shop gets it.</b> Shopkeepers tap "have it" or "don\'t", with price, genuine or compatible, warranty and ready time.</li>'
     + '<li><b>Choose on facts.</b> Offers are ranked by what you want and each price is checked against prices listed online.</li>'
     + '<li><b>Reserve and pay by UPI.</b> Collect with a pickup code, or get it delivered for ₹60.</li></ol>'
-    + '<p class="small muted" style="margin-top:14px">Two devices on the same network? Post a request here and reply from <a href="#shop">Shop desk</a> on your phone.</p>';
+    + '<p class="small muted" style="margin-top:14px">Try it on two devices: post a request here, then reply from <a href="#shop">Shop desk</a> on your phone.</p>';
 }
 function renderActive() {
   const el = $('live');
