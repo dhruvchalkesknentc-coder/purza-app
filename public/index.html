@@ -29,6 +29,7 @@
       <a href="#markets" data-view="markets"><span class="n">04</span>Markets</a>
       <a href="#agents" data-view="agents"><span class="n">05</span>AI buyers</a>
       <a href="#cars" data-view="cars"><span class="n">06</span>Car parts · soon</a>
+      <a href="#why" data-view="why"><span class="n">07</span>Why Purza</a>
     </nav>
   </div>
 </header>
@@ -168,10 +169,33 @@
         <div class="card tbl-wrap" id="car-results"></div>
       </div>
     </section>
+    <section class="view" id="view-why" aria-labelledby="h-why">
+      <div class="view-head">
+        <div>
+          <h2 id="h-why">Why Purza, in numbers</h2>
+          <p>Every figure links to its source. The problem: a technician or household loses half a day walking shop to shop for a ₹200 part, often comes back with a fake, and no search engine or AI assistant can see which shop has it today.</p>
+        </div>
+      </div>
+      <div id="facts"><p class="muted">Loading…</p></div>
+      <h3 class="section-title">How Purza makes money</h3>
+      <div class="price-plan">
+        <div class="card"><div class="label">Technicians</div><div class="v">₹299<span class="small muted">/month</span></div><p class="small muted">Purza Pro: unlimited asks and free pickup codes.</p></div>
+        <div class="card"><div class="label">Households</div><div class="v">₹29 / ₹49</div><p class="small muted">Per order: ₹29 for parts under ₹500, ₹49 above. ₹0 if no shop has it. Delivery ₹60.</p></div>
+        <div class="card"><div class="label">Shops</div><div class="v">3%</div><p class="small muted">On orders through Purza, after 3 free months. Replying is always free.</p></div>
+        <div class="card"><div class="label">Payments</div><div class="v">UPI</div><p class="small muted">Via Razorpay or Cashfree in India; Stripe for agent checkout as it opens up.</p></div>
+      </div>
+      <h3 class="section-title">What's real on this site</h3>
+      <div class="card stack small">
+        <p><span class="tag live">Real</span> Price guide (<span id="obs-count">46</span> listings with links), shops from public listings, and every number on this page.</p>
+        <p><span class="tag live">Live</span> Requests, shop sign-ups, replies and reservations are saved on the server: post on one device, reply from another.</p>
+        <p><span class="tag demo">Demo</span> The 14 auto-replying shops, the UPI payment step (no money moves) and the car catalogue.</p>
+      </div>
+    </section>
   </div>
 </main>
 <footer><div class="wrap">Purza · Prices and public listings collected 20 Nov 2026 · Demo shops are invented; payments run in demo mode until a UPI gateway is connected · <a href="/api">API</a> · <a href="/llms.txt">llms.txt</a></div></footer>
 <div class="toast" id="toast" role="status"></div>
 <script src="/app.js"></script>
+<script src="/why.js"></script>
 </body>
 </html>
