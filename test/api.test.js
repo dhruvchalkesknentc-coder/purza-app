@@ -57,7 +57,7 @@ test('full flow: request, demo and real replies, ranking, reserve, pay', async (
   assert.strictEqual(inbox.status, 200);
   assert.ok(inbox.body.open.some(r => r.id === id));
 
-  const offer = await call('POST', '/api/requests/' + id + '/offers', { status: 'yes', type: 'genuine', price_inr: 245, warranty_days: 180, ready_in_min: 5 }, shopToken);
+  const offer = await call('POST', '/api/requests/' + id + '/offers', { status: 'yes', type: 'genuine', price_inr: 200, warranty_days: 180, ready_in_min: 5 }, shopToken);
   assert.strictEqual(offer.status, 201);
   assert.strictEqual(offer.body.price_check.flag, 'ok');
 
@@ -72,7 +72,7 @@ test('full flow: request, demo and real replies, ranking, reserve, pay', async (
   assert.strictEqual((await call('POST', '/api/requests/' + id + '/reserve', { shop_id: shop.body.shop.id }, shopToken)).status, 403);
   const res = await call('POST', '/api/requests/' + id + '/reserve', { shop_id: shop.body.shop.id }, buyer);
   assert.strictEqual(res.status, 200);
-  assert.deepStrictEqual([res.body.request.reserved.part_price_inr, res.body.request.reserved.fee_inr, res.body.request.reserved.delivery_inr, res.body.request.reserved.total_inr], [245, 29, 60, 334]);
+  assert.deepStrictEqual([res.body.request.reserved.part_price_inr, res.body.request.reserved.fee_inr, res.body.request.reserved.delivery_inr, res.body.request.reserved.total_inr], [200, 29, 60, 289]);
   assert.match(res.body.request.reserved.pickup_code, /^PZ-\d{4}$/);
   assert.strictEqual(res.body.payment.provider, 'demo');
   assert.strictEqual((await call('POST', '/api/requests/' + id + '/reserve', { shop_id: shop.body.shop.id }, buyer)).status, 409);
