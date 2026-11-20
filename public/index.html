@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Purza · Appliance spare parts from Mumbai's markets</title>
+<meta name="description" content="Ask every appliance spare-parts shop in Lohar Chawl and Lamington Road at once. Compare price, genuine or compatible, warranty and ready time. Reserve and pay by UPI.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Public+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="Guide for AI assistants">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="top-row">
+      <div class="brand">
+        <img src="/favicon.svg" width="44" height="44" alt="">
+        <div><h1>Purza</h1><p>One ask. Every parts shop in the market replies.</p></div>
+      </div>
+      <div class="chips"><span class="chip" id="api-chip"><span class="dot"></span><span id="api-chip-text">Connecting…</span></span></div>
+    </div>
+    <nav class="tabs" aria-label="Sections">
+      <a href="#find" data-view="find"><span class="n">01</span>Find a part</a>
+      <a href="#shop" data-view="shop"><span class="n">02</span>Shop desk</a>
+      <a href="#prices" data-view="prices"><span class="n">03</span>Price guide</a>
+      <a href="#markets" data-view="markets"><span class="n">04</span>Markets</a>
+      <a href="#agents" data-view="agents"><span class="n">05</span>AI buyers</a>
+      <a href="#cars" data-view="cars"><span class="n">06</span>Car parts · soon</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <noscript><p class="banner">Purza needs JavaScript to run.</p></noscript>
+
+    <section class="view" id="view-find" aria-labelledby="h-find">
+      <div class="view-head">
+        <div>
+          <h2 id="h-find">Ask every parts shop in the market at once</h2>
+          <p>Name the part or describe what's broken. Shops reply with the price, genuine or compatible, warranty and when it's ready. Reserve the best one and pay by UPI.</p>
+        </div>
+        <button class="btn ghost" id="fill-demo" type="button">Fill an example</button>
+      </div>
+      <div class="desk">
+        <form class="card stack" id="ask-form" novalidate>
+          <div class="label">Your request</div>
+          <div class="field">
+            <span class="flabel">Who's asking</span>
+            <div class="seg" data-group="persona">
+              <button type="button" data-val="tech" aria-pressed="true">Technician</button>
+              <button type="button" data-val="home" aria-pressed="false">Household</button>
+            </div>
+          </div>
+          <div class="field"><label for="part">Part</label><select id="part"><option value="">Loading parts…</option></select></div>
+          <div class="field">
+            <label for="describe">Or describe it in your own words</label>
+            <textarea id="describe" rows="2" maxlength="200" placeholder="e.g. Bajaj mixer ka coupler toot gaya"></textarea>
+            <div class="suggest" id="suggest"></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label for="sticker">Model on the sticker</label><input id="sticker" maxlength="60" autocomplete="off" placeholder="e.g. Voltas 1.5 T"></div>
+            <div class="field"><label for="area">Your area</label><input id="area" maxlength="40" autocomplete="off" placeholder="e.g. Kurla"></div>
+          </div>
+          <div class="field">
+            <span class="flabel">What matters most</span>
+            <div class="seg" data-group="prefer">
+              <button type="button" data-val="genuine" aria-pressed="true">Genuine</button>
+              <button type="button" data-val="cheap" aria-pressed="false">Cheapest</button>
+              <button type="button" data-val="fast" aria-pressed="false">Fastest</button>
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <span class="flabel">Get it by</span>
+              <div class="seg" data-group="delivery">
+                <button type="button" data-val="pickup" aria-pressed="true">Pickup</button>
+                <button type="button" data-val="deliver" aria-pressed="false">Delivery</button>
+              </div>
+            </div>
+            <div class="field"><label for="budget">Budget ₹ (optional)</label><input id="budget" inputmode="numeric" maxlength="7" autocomplete="off" placeholder="No limit"></div>
+          </div>
+          <label class="check"><input type="checkbox" id="include-demo" checked><span>Include the 14 demo shops <span class="muted small">(invented, so you always get replies while real shops join)</span></span></label>
+          <p class="err" id="ask-error" role="alert"></p>
+          <button class="btn brass" id="ask-btn" type="submit">Ask the market</button>
+          <p class="small muted" id="fee-note"></p>
+        </form>
+        <section class="card" id="live" aria-live="polite" aria-label="Your request and the shops' replies"></section>
+        <aside class="stack side">
+          <div class="card stack" id="guide-card"></div>
+          <div class="card stack" id="my-reqs"></div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="view" id="view-shop" aria-labelledby="h-shop">
+      <div class="view-head">
+        <div>
+          <h2 id="h-shop">Shop desk: reply to buyers in one tap</h2>
+          <p>Requests for the parts you stock arrive here. Tap have it or not, set the price, and you're done. Free for the first 3 months, then 3% on orders through Purza.</p>
+        </div>
+      </div>
+      <div id="shop-root"></div>
+    </section>
+
+    <section class="view" id="view-prices" aria-labelledby="h-prices">
+      <div class="view-head">
+        <div>
+          <h2 id="h-prices">Price guide: what these parts sell for in India</h2>
+          <p>Prices listed online by brands, marketplaces and trade sellers, with links. Purza uses them to flag a quote that looks too high, or a "genuine" part that's suspiciously cheap.</p>
+        </div>
+      </div>
+      <div class="guide-controls">
+        <div class="field"><label for="guide-q">Search</label><input id="guide-q" type="search" autocomplete="off" placeholder="e.g. capacitor, geyser, drain"></div>
+        <div class="filters" id="guide-cats" aria-label="Filter by appliance"></div>
+      </div>
+      <div class="card tbl-wrap"><table class="guide" id="guide-table"></table></div>
+    </section>
+
+    <section class="view" id="view-markets" aria-labelledby="h-markets">
+      <div class="view-head">
+        <div>
+          <h2 id="h-markets">The markets and the shops in them</h2>
+          <p>Shops that join on the Shop desk appear first. Below them, real businesses from public listings: not Purza partners, but the first doors to knock on.</p>
+        </div>
+      </div>
+      <h3 class="section-title">Shops on Purza</h3>
+      <div class="card tbl-wrap" id="purza-shops"></div>
+      <h3 class="section-title">Real shops from public listings <span class="tag warn">not Purza partners</span></h3>
+      <div class="filters" id="listing-filter"></div>
+      <div class="card tbl-wrap"><table id="listings"></table></div>
+    </section>
+
+    <section class="view" id="view-agents" aria-labelledby="h-agents">
+      <div class="view-head">
+        <div>
+          <h2 id="h-agents">When the buyer is an AI agent</h2>
+          <p>Every step a person takes on this site is also an API call, and <a href="/llms.txt">/llms.txt</a> tells AI assistants how to use it. An agent can find the part, ask the whole market, read ranked offers with a price check, and reserve.</p>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="card stack"><div class="label">Guide for AI assistants (/llms.txt)</div><pre id="llms">Loading…</pre></div>
+        <div class="card stack">
+          <div class="label">Try it from a terminal</div>
+          <pre id="curl"></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-cars" aria-labelledby="h-cars">
+      <div class="view-head">
+        <div>
+          <h2 id="h-cars">Car parts by Year, Make and Model <span class="tag warn">phase 2 preview</span></h2>
+          <p>Pick the vehicle, type the part, see what fits. Sample catalogue only; real fitment data needs a licensed catalogue before launch.</p>
+        </div>
+      </div>
+      <div class="desk2">
+        <form class="card stack" id="car-form">
+          <div class="field"><label for="car-year">Year</label><select id="car-year"></select></div>
+          <div class="field"><label for="car-make">Make</label><select id="car-make"></select></div>
+          <div class="field"><label for="car-model">Model</label><select id="car-model"></select></div>
+          <div class="field"><label for="car-q">Part</label><input id="car-q" autocomplete="off" placeholder="e.g. brake, filter"></div>
+          <button class="btn" type="submit">Search parts</button>
+        </form>
+        <div class="card tbl-wrap" id="car-results"></div>
+      </div>
+    </section>
+  </div>
+</main>
+<footer><div class="wrap">Purza · Prices and public listings collected 20 Nov 2026 · Demo shops are invented; payments run in demo mode until a UPI gateway is connected · <a href="/api">API</a> · <a href="/llms.txt">llms.txt</a></div></footer>
+<div class="toast" id="toast" role="status"></div>
+<script src="/app.js"></script>
+</body>
+</html>
