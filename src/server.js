@@ -10,10 +10,12 @@ const D_ZONES = L.D.ZONES;
 const D_AREAS = L.D.AREAS.map(a => ({ name: a.name, zone: a.zone, aka: a.aka || [] }));
 const payments = require('./payments');
 const photoCheck = require('./identify');
+const copilot = require('./agent');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const MAX_BODY = 32 * 1024;
 const MAX_PHOTO_BODY = 6 * 1024 * 1024;
+const MAX_AGENT_BODY = 64 * 1024;
 const INBOX_DAYS = 7;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8', '.txt': 'text/plain; charset=utf-8' };
 const SECURITY_HEADERS = {
@@ -110,6 +112,7 @@ function createApp(opts = {}) {
   const now = opts.now || (() => Date.now());
   const corsOrigin = opts.corsOrigin || process.env.CORS_ORIGIN || '*';
   const allowIdentify = rateLimiter(opts.identifyPerMinute || Number(process.env.IDENTIFY_PER_MINUTE) || 6);
+  const allowAgent = rateLimiter(opts.agentPerMinute || Number(process.env.AGENT_PER_MINUTE) || 15);
   const allowWrite = rateLimiter(opts.writesPerMinute || Number(process.env.WRITES_PER_MINUTE) || 60);
   const allowRead = rateLimiter(opts.readsPerMinute || Number(process.env.READS_PER_MINUTE) || 1200);
   const S = statements(db);
@@ -221,9 +224,9 @@ function createApp(opts = {}) {
 
   route('GET', '/api', () => ({
     name: 'Purza API', docs: '/llms.txt',
-    endpoints: ['GET /api/health', 'POST /api/identify', 'GET /api/categories', 'GET /api/parts?q=&category=', 'GET /api/parts/:id', 'GET /api/listings?area=', 'GET /api/areas', 'GET /api/facts', 'GET /api/shops', 'POST /api/shops', 'GET /api/shop/inbox', 'POST /api/requests', 'GET /api/requests?status=open', 'GET /api/requests/:id', 'POST /api/requests/:id/offers', 'POST /api/requests/:id/reserve', 'POST /api/requests/:id/pay', 'POST /api/requests/:id/cancel', 'GET /api/vehicles', 'GET /api/search?part=&year=&make=&model=']
+    endpoints: ['GET /api/health', 'POST /api/identify', 'POST /api/agent', 'GET /api/categories', 'GET /api/parts?q=&category=', 'GET /api/parts/:id', 'GET /api/listings?area=', 'GET /api/areas', 'GET /api/facts', 'GET /api/shops', 'POST /api/shops', 'GET /api/shop/inbox', 'POST /api/requests', 'GET /api/requests?status=open', 'GET /api/requests/:id', 'POST /api/requests/:id/offers', 'POST /api/requests/:id/reserve', 'POST /api/requests/:id/pay', 'POST /api/requests/:id/cancel', 'GET /api/vehicles', 'GET /api/search?part=&year=&make=&model=']
   }));
-  route('GET', '/api/health', () => ({ ok: true, time: new Date(now()).toISOString(), payments: payments.MODE, ai: photoCheck.provider() }));
+  route('GET', '/api/health', () => ({ ok: true, time: new Date(now()).toISOString(), payments: payments.MODE, ai: photoCheck.provider(), copilot: copilot.provider(), copilot_model: copilot.model() }));
   route('POST', '/api/identify', ({ body }) => photoCheck.identify(body, opts.identifyFetch || fetch));
   route('GET', '/api/categories', () => ({ appliance: S.categories.all(), car: S.carCategories.all() }));
   route('GET', '/api/parts', ({ query }) => {
@@ -264,7 +267,8 @@ function createApp(opts = {}) {
       orders: S.orders.all(s.id).map(r => inboxCard(r, s.id))
     };
   });
-  route('POST', '/api/requests', ({ body }) => {
+  // Posts a request to every matching shop. Used by POST /api/requests and by the copilot.
+  function createRequest(body) {
     let partRow = null, part;
     if (body.part_id != null && body.part_id !== '') {
       partRow = typeof body.part_id === 'string' && /^[a-z0-9-]{2,40}$/.test(body.part_id) ? S.part.get(body.part_id) : null;
@@ -293,7 +297,11 @@ function createApp(opts = {}) {
         else S.insertOffer.run(id, d.shopId, 'no', null, null, null, null, at, t);
       }
     });
-    return { status: 201, body: Object.assign({ buyer_token: token, note: 'Keep buyer_token: it is needed to reserve, pay or cancel. Replies arrive over about a minute; poll GET /api/requests/' + id + '.' }, requestView(S.request.get(id))) };
+    return { id, token, view: requestView(S.request.get(id)) };
+  }
+  route('POST', '/api/requests', ({ body }) => {
+    const { id, token, view } = createRequest(body);
+    return { status: 201, body: Object.assign({ buyer_token: token, note: 'Keep buyer_token: it is needed to reserve, pay or cancel. Replies arrive over about a minute; poll GET /api/requests/' + id + '.' }, view) };
   });
   route('GET', '/api/requests', ({ query }) => {
     const status = oneOf(query.get('status') || null, ['open', 'reserved', 'paid', 'cancelled'], 'status', null);
@@ -321,10 +329,10 @@ function createApp(opts = {}) {
     const mine = S.myOffer.get(r.id, s.id);
     return { status: 201, body: { ok: true, my_offer: { status: mine.status, type: mine.type, price_inr: mine.price_inr, warranty_days: mine.warranty_days, ready_in_min: mine.ready_min }, price_check: status === 'yes' ? L.fairCheck(rulePart(r.part_id, { part_name: r.part_name, category: r.category }), offer.type, offer.price) : null } };
   });
-  route('POST', '/api/requests/:id/reserve', ({ req, params, body }) => {
-    const r = buyerRequest(req, params.id);
+  // Reserves one shop's offer. Used by the reserve route and by the copilot.
+  function reserveOffer(r, shopIdIn) {
     if (r.status !== 'open') fail(409, 'This request is already ' + r.status);
-    const shopId = typeof body.shop_id === 'string' && ID_RE.shop.test(body.shop_id) ? body.shop_id : fail(400, 'shop_id is required');
+    const shopId = typeof shopIdIn === 'string' && ID_RE.shop.test(shopIdIn) ? shopIdIn : fail(400, 'shop_id is required');
     const o = S.offersFor.all(r.id).find(x => x.shop_id === shopId && x.status === 'yes' && x.reveal_at <= now());
     if (!o) fail(409, 'That shop has not offered this part');
     const t = L.totals(o.price_inr, r.persona, r.delivery);
@@ -333,7 +341,8 @@ function createApp(opts = {}) {
     const res = S.reserve.run(shopId, code, t.part, t.fee, t.delivery, t.total, now(), r.id);
     if (res.changes !== 1) fail(409, 'This request changed; reload it');
     return Object.assign({ payment, hold_minutes: 30 }, requestView(S.request.get(r.id)));
-  });
+  }
+  route('POST', '/api/requests/:id/reserve', ({ req, params, body }) => reserveOffer(buyerRequest(req, params.id), body.shop_id));
   route('POST', '/api/requests/:id/pay', ({ req, params }) => {
     const r = buyerRequest(req, params.id);
     if (r.status !== 'reserved') fail(409, r.status === 'paid' ? 'Already paid' : 'Reserve an offer first');
@@ -346,6 +355,80 @@ function createApp(opts = {}) {
     if (S.cancel.run(r.id).changes !== 1) fail(409, 'This request is already ' + r.status);
     return requestView(S.request.get(r.id));
   });
+  // ---------- copilot (src/agent.js) ----------
+  const copilotRequests = new Map(); // request id -> buyer token, for requests the copilot posted
+  const listingOut = l => ({ name: l.name, area: l.area, address: l.address, sells: l.sells });
+  const copilotTools = {
+    find_part: ({ query }) => {
+      const rows = searchPartRows(String(query || '').slice(0, 120)).slice(0, 4);
+      if (!rows.length) return { parts: [], note: 'No catalogue match. ask_market can still post it with part_name.', catalogue: S.parts.all().map(r => r.id + ': ' + r.short_name) };
+      return { parts: rows.map(r => { const v = partView(r, false); return { id: v.id, name: v.name, local_name: v.local_name, appliance: v.appliance, listed_price_inr: v.listed_price_inr, genuine_inr: v.genuine_inr, compatible_inr: v.compatible_inr, check: v.check }; }) };
+    },
+    price_check: ({ part_id }) => {
+      const row = typeof part_id === 'string' && /^[a-z0-9-]{2,40}$/.test(part_id) ? S.part.get(part_id) : null;
+      if (!row) return { error: 'Unknown part_id. Use find_part first.' };
+      const v = partView(row);
+      v.listings = v.listings.slice(0, 10);
+      return v;
+    },
+    shops_near: ({ area }) => {
+      const near = L.shopsNear(String(area || '').slice(0, 40));
+      if (!near) return { error: 'Not a Mumbai area I know.', areas: D_AREAS.map(a => a.name) };
+      const here = S.shops.all().filter(s => s.market === near.area.name);
+      return {
+        area: near.area.name, zone: near.area.zone, exact: near.exact, count: near.shops.length,
+        note: near.exact ? 'Public listings in this area. Not Purza partners.' : 'No listed shop in this area yet; these are the nearest, in the same zone. Not Purza partners.',
+        listed_shops: near.shops.slice(0, 8).map(listingOut),
+        purza_shops_here: here.filter(s => !s.demo).map(s => s.name),
+        demo_shops_here: here.filter(s => s.demo).map(s => s.name)
+      };
+    },
+    market_overview: () => {
+      const D = L.D, shops = S.shops.all(), byZone = {};
+      for (const l of D.PUBLIC_LISTINGS) byZone[l.zone] = (byZone[l.zone] || 0) + 1;
+      return {
+        public_listings: D.PUBLIC_LISTINGS.length, listings_by_zone: byZone,
+        areas_with_listed_shops: new Set(D.PUBLIC_LISTINGS.map(l => l.area).filter(a => a !== D.NO_AREA)).size, mumbai_areas: D.AREAS.length,
+        purza_shops_joined: shops.filter(s => !s.demo).length, demo_shops: shops.filter(s => s.demo).length,
+        parts_in_price_guide: D.PARTS.length, listed_prices: D.PARTS.reduce((n, p) => n + p.obs.length, 0), prices_collected_on: D.COLLECTED_ON,
+        open_requests: S.recent.all({ status: 'open', limit: 100 }).length,
+        fees: D.FEES, facts: D.FACTS.map(f => ({ stat: f.stat, label: f.label, source: f.source }))
+      };
+    },
+    ask_market: (a, ctx) => {
+      const body = { area: a.area, prefer: a.prefer, delivery: a.delivery, persona: a.persona, sticker: a.sticker, via: 'agent', include_demo: true };
+      if (a.part_id) body.part_id = a.part_id; else { body.part_name = a.part_name; body.category = a.category; }
+      if (a.max_price_inr != null && a.max_price_inr !== '') body.max_price_inr = Math.round(Number(a.max_price_inr));
+      const { id, token, view } = createRequest(body);
+      copilotRequests.set(id, token);
+      if (copilotRequests.size > 500) copilotRequests.delete(copilotRequests.keys().next().value);
+      ctx.actions.push({ type: 'open_request', id, token, part_name: view.request.part_name, created_at: view.request.created_at });
+      return { request_id: id, part: view.request.part_name, area: view.request.area, shops_asked: view.summary.shops_asked, note: 'Posted and open on the Find tab. Replies arrive over about a minute; use get_offers to read them.' };
+    },
+    get_offers: ({ request_id }) => {
+      const r = typeof request_id === 'string' && ID_RE.req.test(request_id) ? S.request.get(request_id) : null;
+      if (!r) return { error: 'No such request' };
+      const v = requestView(r);
+      return { request: { id: r.id, part: r.part_name, area: r.area, prefer: r.prefer, status: r.status }, summary: v.summary, offers: v.offers.slice(0, 5), best_reason: v.best_reason, over_budget: v.over_budget, fees_if_best: v.fees_if_best, reserved: v.request.reserved };
+    },
+    reserve_offer: ({ request_id, shop_id }, ctx) => {
+      const token = copilotRequests.get(request_id);
+      if (!token) return { error: 'I can only reserve requests I posted myself. Use the Reserve button on the Find tab.' };
+      const out = reserveOffer(S.request.get(request_id), shop_id);
+      ctx.actions.push({ type: 'open_request', id: request_id, token, part_name: out.request.part_name, created_at: out.request.created_at });
+      return { reserved: out.request.reserved, payment: { mode: out.payment && out.payment.mode, note: 'Demo mode: no money moves.' }, hold_minutes: out.hold_minutes };
+    },
+    show_on_screen: ({ view, area, part_id }, ctx) => {
+      if (!copilot.VIEWS.includes(view)) return { error: 'Unknown tab. Use one of ' + copilot.VIEWS.join(', ') };
+      const action = { type: 'show', view };
+      const a = area ? L.findArea(String(area)) : null;
+      if (a) { action.area = a.name; action.zone = a.zone; }
+      if (typeof part_id === 'string' && /^[a-z0-9-]{2,40}$/.test(part_id) && S.part.get(part_id)) action.part_id = part_id;
+      ctx.actions.push(action);
+      return { ok: true, showing: action };
+    }
+  };
+  route('POST', '/api/agent', ({ body }) => copilot.run(body, copilotTools, opts.agentFetch || fetch));
   route('GET', '/api/vehicles', () => ({ note: 'Sample catalogue for the car-parts preview.', vehicles: S.vehicles.all() }));
   route('GET', '/api/search', ({ query }) => {
     const part = str(query.get('part'), 60, 'part');
@@ -408,13 +491,14 @@ function createApp(opts = {}) {
     const cors = { 'Access-Control-Allow-Origin': corsOrigin, 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Vary': 'Origin' };
     if (req.method === 'OPTIONS') { res.writeHead(204, Object.assign(cors, SECURITY_HEADERS)); return res.end(); }
     if (url.pathname === '/api/identify' && req.method === 'POST' && !allowIdentify(ip)) return send(res, 429, { error: 'Too many photo checks. Wait a minute, or pick the part from the list.' }, Object.assign({ 'Retry-After': '60' }, cors));
+    if (url.pathname === '/api/agent' && req.method === 'POST' && !allowAgent(ip)) return send(res, 429, { error: 'Too many copilot messages. Wait a minute.' }, Object.assign({ 'Retry-After': '60' }, cors));
     if (!(req.method === 'GET' ? allowRead(ip) : allowWrite(ip))) return send(res, 429, { error: 'Too many requests. Wait a minute.' }, Object.assign({ 'Retry-After': '60' }, cors));
     for (const r of routes) {
       if (r.method !== req.method) continue;
       const m = r.re.exec(url.pathname);
       if (!m) continue;
       try {
-        const body = await readBody(req, url.pathname === '/api/identify' ? MAX_PHOTO_BODY : MAX_BODY);
+        const body = await readBody(req, url.pathname === '/api/identify' ? MAX_PHOTO_BODY : url.pathname === '/api/agent' ? MAX_AGENT_BODY : MAX_BODY);
         const out = await r.fn({ req, params: m.groups || {}, query: url.searchParams, body });
         if (out && out.status && out.body) return send(res, out.status, out.body, cors);
         return send(res, 200, out, cors);
