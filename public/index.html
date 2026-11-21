@@ -56,6 +56,17 @@
               <button type="button" data-val="home" aria-pressed="false">Household</button>
             </div>
           </div>
+          <div class="field" id="photo-field" hidden>
+            <span class="flabel">Photo of the broken part</span>
+            <div class="photo-row">
+              <div class="ph empty" id="photo-prev">No photo</div>
+              <div class="stack" style="gap:6px">
+                <label class="btn ghost small" for="upload" style="justify-self:start">Add a photo</label>
+                <input type="file" id="upload" accept="image/*" hidden>
+                <div class="ai-line" id="ai-line">AI reads the photo and picks the part.</div>
+              </div>
+            </div>
+          </div>
           <div class="field"><label for="part">Part</label><select id="part"><option value="">Loading parts…</option></select></div>
           <div class="field">
             <label for="describe">Or describe it in your own words</label>
