@@ -7,7 +7,7 @@ const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN');
 const VIEWS = ['find', 'shop', 'prices', 'markets', 'agents', 'cars', 'why'];
 const PREFER = { genuine: 'wants genuine', cheap: 'wants cheapest', fast: 'wants it fast' };
 const CAT_SHORT = { ac: 'AC', fan: 'FAN', mixer: 'MIX', washer: 'WM', geyser: 'GYS', fridge: 'FRG', general: 'PART' };
-const MARKETS = ['Lohar Chawl', 'Lamington Road', 'Grant Road', 'Other Mumbai'];
+let MARKETS = ['Lohar Chawl', 'Lamington Road', 'Grant Road', 'Other Mumbai']; // replaced by the Mumbai areas from /api/listings
 
 const mem = {};
 const store = {
@@ -37,7 +37,7 @@ const S = {
   activeId: null, view: null, poll: null,
   mine: store.get('purza.requests', []),
   shop: store.get('purza.shop', null), inbox: null, inboxPoll: null, shopFilter: 'open', reply: null,
-  guideCat: 'all', guideQ: '', guideOpen: new Set(), listings: [], listingMarket: 'All', vehicles: []
+  guideCat: 'all', guideQ: '', guideOpen: new Set(), listings: [], zones: [], areas: [], listingZone: 'All', listingArea: 'All', vehicles: []
 };
 const partById = id => S.parts.find(p => p.id === id);
 
@@ -90,7 +90,7 @@ function renderGuideCard() {
 }
 function fillDemo() {
   setSeg('persona', 'tech'); setSeg('prefer', 'genuine'); setSeg('delivery', 'deliver');
-  $('part').value = 'ac-capacitor'; $('sticker').value = 'Voltas 1.5 T split AC'; $('area').value = 'Kurla';
+  $('part').value = 'ac-capacitor'; $('sticker').value = 'Voltas 1.5 T split AC'; $('area').value = 'Kurla'; renderNear();
   $('describe').value = 'AC outdoor unit hums, compressor not starting'; $('budget').value = '';
   renderGuideCard(); $('suggest').innerHTML = '';
   toast('Example filled in. Press "Ask the market".');
@@ -259,7 +259,7 @@ function shopForm() {
   return '<div class="grid-2"><form class="card stack" id="shop-form" novalidate><div class="label">Add your shop</div>'
     + '<div class="field"><label for="sf-name">Shop name</label><input id="sf-name" maxlength="60" autocomplete="organization" placeholder="e.g. Kamdar Refrigeration Stores"></div>'
     + '<div class="row2"><div class="field"><label for="sf-no">Shop no.</label><input id="sf-no" maxlength="20" placeholder="e.g. Shop 7"></div>'
-    + '<div class="field"><label for="sf-market">Market</label><select id="sf-market">' + MARKETS.map(m => '<option>' + m + '</option>').join('') + '</select></div></div>'
+    + '<div class="field"><label for="sf-market">Area / market</label><select id="sf-market">' + areaOptions('Lohar Chawl') + '</select></div></div>'
     + '<fieldset class="field" style="border:0;padding:0;margin:0"><legend class="flabel" style="margin-bottom:4px">Parts you stock</legend><div class="checks">'
     + S.categories.filter(c => c.code !== 'general').map(c => '<label class="check"><input type="checkbox" name="sf-cat" value="' + esc(c.code) + '"><span>' + esc(c.name) + '</span></label>').join('') + '</div></fieldset>'
     + '<p class="err" id="sf-err" role="alert"></p><button class="btn brass" type="submit" style="justify-self:start">Start receiving requests</button></form>'
@@ -381,13 +381,44 @@ async function loadShops() {
   try {
     const r = await api('GET', '/api/shops');
     const real = r.shops.filter(s => !s.demo);
-    $('purza-shops').innerHTML = real.length ? '<table><thead><tr><th>Shop</th><th>Market</th><th>Stocks</th><th class="r">Joined</th></tr></thead><tbody>' + real.map(s => '<tr><td><b>' + esc(s.name) + '</b><div class="small muted">' + esc(s.shop_no) + '</div></td><td>' + esc(s.market) + '</td><td class="small">' + s.categories.map(c => esc((S.categories.find(x => x.code === c) || {}).name || c)).join(', ') + '</td><td class="r small">' + timeAgo(s.created_at) + '</td></tr>').join('') + '</tbody></table>' : '<p class="muted">No shop has joined yet. Add one on the <a href="#shop">Shop desk</a>.</p>';
+    $('purza-shops').innerHTML = real.length ? '<table><thead><tr><th>Shop</th><th>Area</th><th>Stocks</th><th class="r">Joined</th></tr></thead><tbody>' + real.map(s => '<tr><td><b>' + esc(s.name) + '</b><div class="small muted">' + esc(s.shop_no) + '</div></td><td>' + esc(s.market) + '</td><td class="small">' + s.categories.map(c => esc((S.categories.find(x => x.code === c) || {}).name || c)).join(', ') + '</td><td class="r small">' + timeAgo(s.created_at) + '</td></tr>').join('') + '</tbody></table>' : '<p class="muted">No shop has joined yet. Add one on the <a href="#shop">Shop desk</a>.</p>';
   } catch (e) { $('purza-shops').innerHTML = '<p class="muted">Couldn\'t load shops.</p>'; }
 }
+const NO_AREA = 'Area not listed';
+function areaOptions(sel) {
+  if (!S.areas.length) return MARKETS.map(m => '<option' + (m === sel ? ' selected' : '') + '>' + esc(m) + '</option>').join('');
+  return S.zones.map(z => '<optgroup label="' + esc(z) + '">' + S.areas.filter(a => a.zone === z).map(a => '<option' + (a.name === sel ? ' selected' : '') + '>' + esc(a.name) + '</option>').join('') + '</optgroup>').join('')
+    + '<option' + (sel === 'Other Mumbai' ? ' selected' : '') + '>Other Mumbai</option>';
+}
 function renderListings() {
-  $('listing-filter').innerHTML = ['All'].concat(MARKETS).map(m => '<button type="button" data-market="' + esc(m) + '" aria-pressed="' + (S.listingMarket === m) + '">' + esc(m) + '</button>').join('');
-  const rows = S.listings.filter(l => S.listingMarket === 'All' || l.market === S.listingMarket);
-  $('listings').innerHTML = '<thead><tr><th>Business</th><th>Market</th><th>Address</th><th>Sells</th><th>Source</th></tr></thead><tbody>' + rows.map(l => '<tr><td><b>' + esc(l.name) + '</b></td><td class="nowrap">' + esc(l.market) + '</td><td class="small">' + esc(l.address) + '</td><td class="small">' + esc(l.sells) + '</td><td class="small"><a href="' + esc(l.source_url) + '" target="_blank" rel="noopener">' + esc(l.source_name) + '</a></td></tr>').join('') + '</tbody>';
+  const L = S.listings, zones = S.zones.concat([NO_AREA]);
+  const withShops = new Set(L.map(l => l.area).filter(a => a !== NO_AREA));
+  $('listing-cover').innerHTML = '<b>' + L.length + ' shops</b> found in <b>' + withShops.size + ' of ' + S.areas.length + '</b> Mumbai areas. Pick a zone, then an area.';
+  $('listing-filter').innerHTML = ['All'].concat(zones).map(z => { const n = z === 'All' ? L.length : L.filter(l => l.zone === z).length; return n || z === 'All' ? '<button type="button" data-zone="' + esc(z) + '" aria-pressed="' + (S.listingZone === z) + '">' + esc(z === 'All' ? 'All Mumbai' : z) + ' · ' + n + '</button>' : ''; }).join('');
+  const inZone = L.filter(l => S.listingZone === 'All' || l.zone === S.listingZone);
+  const areas = S.listingZone === 'All' || S.listingZone === NO_AREA ? [] : S.areas.filter(a => a.zone === S.listingZone && withShops.has(a.name));
+  $('listing-areas').innerHTML = areas.length ? ['All'].concat(areas.map(a => a.name)).map(a => '<button type="button" data-area="' + esc(a) + '" aria-pressed="' + (S.listingArea === a) + '">' + esc(a === 'All' ? 'Every area' : a) + ' · ' + (a === 'All' ? inZone.length : L.filter(l => l.area === a).length) + '</button>').join('') : '';
+  $('listing-areas').hidden = !areas.length;
+  const rows = inZone.filter(l => S.listingArea === 'All' || l.area === S.listingArea);
+  $('listings').innerHTML = '<thead><tr><th>Business</th><th>Area</th><th>Address</th><th>Sells</th><th>Source</th></tr></thead><tbody>' + rows.map(l => '<tr><td><b>' + esc(l.name) + '</b></td><td class="nowrap">' + esc(l.area) + '<div class="small muted">' + esc(l.zone) + '</div></td><td class="small">' + esc(l.address) + '</td><td class="small">' + esc(l.sells) + '</td><td class="small"><a href="' + esc(l.source_url) + '" target="_blank" rel="noopener">' + esc(l.source_name) + '</a></td></tr>').join('') + '</tbody>';
+}
+// Same area matching as the server (src/logic.js findArea).
+function normArea(t) { return ' ' + String(t || '').toLowerCase().replace(/\brd\b/g, 'road').replace(/[^a-z]+/g, ' ').replace(/\b(east|west|e|w|mumbai|station)\b/g, ' ').replace(/\s+/g, ' ').trim() + ' '; }
+function findArea(text) {
+  const t = normArea(text);
+  if (t.trim().length < 3) return null;
+  const names = a => [a.name].concat(a.aka || []).map(normArea);
+  return S.areas.find(a => names(a).includes(t)) || S.areas.find(a => names(a).some(n => t.includes(n))) || S.areas.find(a => names(a).some(n => n.trim().startsWith(t.trim()))) || null;
+}
+function renderNear() {
+  const el = $('near-shops'), v = $('area').value, area = findArea(v);
+  if (!area) { el.hidden = v.trim().length < 3 || !S.areas.length; el.innerHTML = el.hidden ? '' : 'Not a Mumbai area we know yet. Your request still goes to every shop.'; return; }
+  let shops = S.listings.filter(l => l.area === area.name); const exact = shops.length > 0;
+  if (!exact) shops = S.listings.filter(l => l.zone === area.zone);
+  el.hidden = false;
+  el.innerHTML = '<b>' + (exact ? 'Parts shops in ' + esc(area.name) : 'No shop listed in ' + esc(area.name) + ' yet. Nearest in ' + esc(area.zone)) + '</b> <span class="muted">(' + shops.length + ')</span>'
+    + '<ul>' + shops.slice(0, 5).map(l => '<li>' + esc(l.name) + ' <span class="muted">· ' + esc(l.address) + (exact ? '' : ', ' + esc(l.area)) + '</span></li>').join('') + '</ul>'
+    + '<button type="button" class="linkbtn" data-area="' + esc(exact ? area.name : '') + '" data-zone="' + esc(area.zone) + '">See ' + (exact ? 'all shops in ' + esc(area.name) : 'every shop in ' + esc(area.zone)) + ' →</button>';
 }
 function fillSelect(sel, values, label) { const v = sel.value; sel.innerHTML = '<option value="">' + label + '</option>' + values.map(x => '<option' + (String(x) === v ? ' selected' : '') + '>' + esc(x) + '</option>').join(''); }
 function syncCars() {
@@ -431,7 +462,10 @@ function bind() {
   $('guide-q').addEventListener('input', e => { S.guideQ = e.target.value; renderGuide(); });
   $('guide-cats').addEventListener('click', e => { const b = e.target.closest('button[data-cat]'); if (b) { S.guideCat = b.dataset.cat; renderGuide(); } });
   $('guide-table').addEventListener('click', e => { const b = e.target.closest('button[data-part]'); if (!b) return; if (S.guideOpen.has(b.dataset.part)) S.guideOpen.delete(b.dataset.part); else S.guideOpen.add(b.dataset.part); renderGuide(); });
-  $('listing-filter').addEventListener('click', e => { const b = e.target.closest('button[data-market]'); if (b) { S.listingMarket = b.dataset.market; renderListings(); } });
+  $('listing-filter').addEventListener('click', e => { const b = e.target.closest('button[data-zone]'); if (b) { S.listingZone = b.dataset.zone; S.listingArea = 'All'; renderListings(); } });
+  $('listing-areas').addEventListener('click', e => { const b = e.target.closest('button[data-area]'); if (b) { S.listingArea = b.dataset.area; renderListings(); } });
+  $('area').addEventListener('input', renderNear);
+  $('near-shops').addEventListener('click', e => { const b = e.target.closest('button[data-zone]'); if (!b) return; S.listingZone = b.dataset.zone; S.listingArea = b.dataset.area || 'All'; renderListings(); location.hash = '#markets'; });
   $('car-form').addEventListener('submit', searchCars);
   for (const id of ['car-year', 'car-make']) $(id).addEventListener('change', () => { syncCars(); searchCars(); });
   $('car-model').addEventListener('change', () => searchCars());
@@ -442,7 +476,8 @@ async function init() {
     const [cats, parts, listings, vehicles, llms] = await Promise.all([
       api('GET', '/api/categories'), api('GET', '/api/parts'), api('GET', '/api/listings'), api('GET', '/api/vehicles'), fetch('/llms.txt').then(r => r.text())
     ]);
-    S.categories = cats.appliance; S.parts = parts.parts; S.listings = listings.listings; S.vehicles = vehicles.vehicles;
+    S.categories = cats.appliance; S.parts = parts.parts; S.listings = listings.listings; S.zones = listings.zones || []; S.areas = listings.areas || []; S.vehicles = vehicles.vehicles;
+    if (S.areas.length) { MARKETS = S.areas.map(a => a.name).concat(['Other Mumbai']); $('area-list').innerHTML = S.areas.map(a => '<option value="' + esc(a.name) + '">' + esc(a.zone) + '</option>').join(''); }
     $('llms').textContent = llms;
     buildPartSelect(); renderGuide(); renderListings(); syncCars(); searchCars();
     $('api-chip').classList.add('on'); $('api-chip-text').textContent = 'Connected to the Purza API';
