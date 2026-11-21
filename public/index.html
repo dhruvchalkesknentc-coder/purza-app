@@ -209,7 +209,17 @@
 </main>
 <footer><div class="wrap">Purza · Mumbai prices and shop listings collected 20–21 Nov 2026 · Demo shops are invented; payments run in demo mode until a UPI gateway is connected · <a href="/api">API</a> · <a href="/llms.txt">llms.txt</a></div></footer>
 <div class="toast" id="toast" role="status"></div>
+<button class="cp-fab" id="cp-fab" type="button" hidden aria-controls="cp-panel" aria-expanded="false"><span aria-hidden="true">✦</span> Ask Copilot</button>
+<section class="cp-panel" id="cp-panel" hidden aria-label="Purza Copilot">
+  <div class="cp-head">
+    <div><b>Purza Copilot</b> <span class="tag" id="cp-model"></span><div class="small muted">Runs the demo with you, using the live data.</div></div>
+    <div class="cp-tools"><button type="button" class="cp-icon" id="cp-new" title="New chat" aria-label="New chat">↺</button><button type="button" class="cp-icon" id="cp-close" title="Close" aria-label="Close">×</button></div>
+  </div>
+  <div class="cp-log" id="cp-log" aria-live="polite"></div>
+  <form class="cp-form" id="cp-form"><label class="sr-only" for="cp-input">Message the copilot</label><textarea id="cp-input" rows="2" maxlength="1500" placeholder="Ask anything, or say “walk me through the demo”"></textarea><button class="btn" id="cp-send" type="submit">Send</button></form>
+</section>
 <script src="/app.js"></script>
 <script src="/why.js"></script>
+<script src="/copilot.js"></script>
 </body>
 </html>
