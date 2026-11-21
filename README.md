@@ -1,6 +1,6 @@
 # Purza
 
-Purza asks every appliance spare-parts shop in Mumbai's Lohar Chawl and Lamington Road at once. A technician or household names the part (or describes what's broken); shops reply in a tap with the price, genuine or compatible, warranty and ready time; the buyer reserves the best offer and pays by UPI. AI agents can do the same through the API.
+Purza asks every appliance spare-parts shop across Mumbai at once: Lohar Chawl and Lamington Road, and the suburbs from Andheri and Kandivali to Kurla, Thane and Vashi. A technician or household names the part (or describes what's broken); shops reply in a tap with the price, genuine or compatible, warranty and ready time; the buyer reserves the best offer and pays by UPI. AI agents can do the same through the API.
 
 This package is the full working app: website, REST API, database and the research data.
 
@@ -81,10 +81,10 @@ Tokens go in the header `Authorization: Bearer <token>`. They are stored hashed 
 
 ## The data
 
-Collected on 20 Nov 2026 from public web pages. Every row in `data/` has its source link.
+Collected on 20–21 Nov 2026 from public Mumbai web pages (Mumbai sellers, plus brand list prices and online stores that deliver in Mumbai). Every row in `data/` has its source link.
 
-- **Part prices (real):** 46 listed prices for 15 common appliance parts (AC and fan capacitors, mixer couplers and jars, washing machine pumps, motors, valves and timers, geyser elements and thermostats, fridge timers, thermostats and relays, AC motors and blowers) from Havells, Flipkart, IndiaMART, Moglix, Aalap and others. Genuine, compatible and trade prices are kept apart.
-- **Shops (real, not partners):** 22 businesses from public directories and store locators in Lohar Chawl, Lamington Road, Grant Road and elsewhere in Mumbai. Phone numbers and owners' names were left out on purpose. They have not joined Purza.
+- **Part prices (real):** 67 listed prices for 15 common appliance parts (AC and fan capacitors, mixer couplers and jars, washing machine pumps, motors, valves and timers, geyser elements and thermostats, fridge timers, thermostats and relays, AC motors and blowers) mostly from Mumbai sellers on IndiaMART (shop and area on each row), plus Havells, Flipkart, Moglix and Aalap. Genuine, compatible and trade prices are kept apart.
+- **Shops (real, not partners):** 72 businesses from public directories and store locators across 31 Mumbai areas (63 areas in six zones are listed for buyers and shops), from Lohar Chawl and Lamington Road to Andheri, Kandivali, Borivali, Kurla, Ghatkopar, Chembur, Thane and Vashi. `GET /api/listings?area=Kandivali` returns the shops in or nearest to an area. Phone numbers and owners' names were left out on purpose. They have not joined Purza.
 - **Market facts (real):** 14 figures with sources: AI shopping in India, WhatsApp use, UPI volumes, AC ownership and sales, repair market size, Urban Company, the two markets, the Right to Repair portal, the car aftermarket.
 - **Demo (invented):** 14 shops that auto-reply so every request gets answers while real shops join. Their prices are drawn from the real price ranges. They are labelled "demo" everywhere.
 - **Sample:** the car catalogue (placeholder part numbers, no prices).
