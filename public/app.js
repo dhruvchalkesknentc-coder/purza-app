@@ -101,7 +101,7 @@ async function onAsk(e) {
   const v = $('part').value, describe = $('describe').value.trim();
   const body = { persona: S.form.persona, prefer: S.form.prefer, delivery: S.form.delivery, area: $('area').value.trim(), sticker: $('sticker').value.trim(), note: describe, include_demo: $('include-demo').checked, via: 'person' };
   if (v && v !== 'other') body.part_id = v;
-  else if (v === 'other' && describe.length >= 3) { body.part_name = describe.slice(0, 80); body.category = 'general'; }
+  else if (v === 'other' && describe.length >= 3) { body.part_name = describe.slice(0, 80); body.category = S.aiCategory || 'general'; }
   else { err.textContent = v === 'other' ? 'Describe the part in a few words.' : 'Choose the part or describe it.'; return; }
   const budget = $('budget').value.replace(/[,\s₹]/g, '');
   if (budget && !/^\d{1,6}$/.test(budget)) { err.textContent = 'Budget should be a number of rupees.'; return; }
@@ -111,7 +111,7 @@ async function onAsk(e) {
     const r = await api('POST', '/api/requests', body);
     S.mine.unshift({ id: r.request.id, token: r.buyer_token, part_name: r.request.part_name, created_at: r.request.created_at });
     S.mine = S.mine.slice(0, 30); store.set('purza.requests', S.mine);
-    $('describe').value = ''; $('suggest').innerHTML = '';
+    $('describe').value = ''; $('suggest').innerHTML = ''; resetPhoto();
     openRequest(r.request.id, r);
   } catch (ex) { err.textContent = ex.message; }
   finally { btn.disabled = false; btn.textContent = 'Ask the market'; }
@@ -206,6 +206,52 @@ function renderMine() {
   if (!S.mine.length) h += '<p class="small muted">None yet. Requests you post from this browser appear here.</p>';
   else h += '<div class="mini">' + S.mine.slice(0, 8).map(m => '<button class="req" type="button" data-rid="' + esc(m.id) + '" aria-current="' + (m.id === S.activeId) + '"><span><b>' + esc(m.part_name) + '</b><span class="small muted">' + timeAgo(m.created_at) + '</span></span><span class="small">' + (m.id === S.activeId && S.view && S.view.request ? esc(S.view.request.status) : 'open ›') + '</span></button>').join('') + '</div>';
   el.innerHTML = h;
+}
+
+// ---------- photo check (server calls Gemini or Claude) ----------
+let photoToken = 0;
+async function shrinkImage(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1024 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.85);
+}
+async function onPhoto(e) {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { toast('Choose a photo (JPG or PNG).'); return; }
+  const line = $('ai-line'), token = ++photoToken;
+  let dataURL;
+  try { dataURL = await shrinkImage(file); } catch (err) { line.textContent = "Couldn't open that photo. Try another one."; return; }
+  const prev = $('photo-prev'); prev.classList.remove('empty'); prev.innerHTML = '<img alt="Your photo" src="' + dataURL + '">';
+  line.innerHTML = '<b>Reading the photo…</b>';
+  try {
+    const r = await api('POST', '/api/identify', { mime_type: 'image/jpeg', image_base64: dataURL.split(',')[1] });
+    if (token === photoToken) applyAI(r);
+  } catch (err) { if (token === photoToken) line.textContent = err.message; }
+}
+function applyAI(r) {
+  const line = $('ai-line');
+  const pct = r.confidence == null ? '' : ' · ' + Math.round(r.confidence * 100) + '% sure';
+  if (r.part_id === 'none') { line.textContent = "That doesn't look like an appliance part. Try a closer photo, or pick from the list."; return; }
+  if (r.label_text && !$('sticker').value) $('sticker').value = r.label_text;
+  const p = partById(r.part_id);
+  if (p) {
+    S.aiCategory = null; $('part').value = p.id;
+    line.innerHTML = 'Looks like <b>' + esc(p.short_name) + '</b>' + esc(pct) + ". Change it below if that's wrong.";
+  } else {
+    S.aiCategory = r.category || 'general'; $('part').value = 'other'; $('describe').value = r.part_name || '';
+    line.innerHTML = 'Looks like <b>' + esc(r.part_name || 'a spare part') + '</b>' + esc(pct) + '. Not in the price guide yet; shops will still quote.';
+  }
+  $('suggest').innerHTML = ''; renderGuideCard();
+}
+function resetPhoto() {
+  photoToken++; S.aiCategory = null;
+  const prev = $('photo-prev'); prev.classList.add('empty'); prev.textContent = 'No photo';
+  $('ai-line').textContent = 'AI reads the photo and picks the part.';
 }
 
 // ---------- shop desk ----------
@@ -368,7 +414,8 @@ function renderCurl() {
 function bind() {
   window.addEventListener('hashchange', route);
   document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button[data-val]'); if (b) setSeg(seg.dataset.group, b.dataset.val); }));
-  $('part').addEventListener('change', () => { $('ask-error').textContent = ''; renderGuideCard(); onDescribe(); });
+  $('part').addEventListener('change', () => { $('ask-error').textContent = ''; if ($('part').value !== 'other') S.aiCategory = null; renderGuideCard(); onDescribe(); });
+  $('upload').addEventListener('change', onPhoto);
   $('describe').addEventListener('input', onDescribe);
   $('suggest').addEventListener('click', e => { const b = e.target.closest('button[data-use]'); if (b) { $('part').value = b.dataset.use; $('suggest').innerHTML = ''; renderGuideCard(); } });
   $('ask-form').addEventListener('submit', onAsk);
@@ -399,6 +446,7 @@ async function init() {
     $('llms').textContent = llms;
     buildPartSelect(); renderGuide(); renderListings(); syncCars(); searchCars();
     $('api-chip').classList.add('on'); $('api-chip-text').textContent = 'Connected to the Purza API';
+    try { const h = await api('GET', '/api/health'); if (h.ai) { $('photo-field').hidden = false; $('api-chip-text').textContent = 'Connected · AI photo check on'; } } catch (e) { /* photo check stays hidden */ }
   } catch (e) {
     $('api-chip').classList.add('off'); $('api-chip-text').textContent = 'API not reachable';
     toast('Could not reach the Purza API. Is the server running?');
