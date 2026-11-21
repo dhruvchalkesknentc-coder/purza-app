@@ -116,7 +116,9 @@ test('Claude: ask the market, read offers, reserve, all through the copilot', ()
     body => {
       const posted = JSON.parse(body.messages.at(-1).content[0].content);
       assert.match(posted.request_id, /^req_/);
-      assert.strictEqual(posted.shops_asked, 14);
+      assert.strictEqual(posted.shops_asked_across_mumbai, 14);
+      assert.strictEqual(posted.of_which_demo_shops, 14);
+      assert.strictEqual(posted.of_which_purza_shops, 0);
       reqId = posted.request_id;
       return json({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Posted. Replies in about a minute.' }] });
     },
@@ -215,4 +217,36 @@ test('errors: quota, bad input, unknown tool, too many messages per minute', () 
     assert.strictEqual(limited.status, 429);
     assert.match(limited.body.error, /copilot/);
   });
+}));
+
+test('a follow-up turn reads offers for the request posted earlier in the chat, and the last round forces an answer', () => withEnv({ GEMINI_API_KEY: 'g' }, async () => {
+  assert.deepStrictEqual(A.cleanRequests([{ id: 'req_abcdef', part_name: 'AC capacitor' }, { id: 'bad id' }, { id: 'req_abcdef' }, 'x']), [{ id: 'req_abcdef', part_name: 'AC capacitor' }]);
+  let t = 0;
+  const calls = [];
+  // Turn 1: ask the market, then answer. Turn 2: keep calling get_offers (with no id) until tools are switched off.
+  const script = [{ tools: [['ask_market', { part_id: 'ac-capacitor', area: 'Kurla' }]] }, { text: 'Posted.' }]
+    .concat(Array.from({ length: 5 }, () => ({ tools: [['get_offers', {}]] })), [{ text: 'Here are the offers.' }]);
+  await withServer({ now: () => t, agentFetch: fakeGemini(script, calls) }, async call => {
+    const first = await call('POST', '/api/agent', say('Ask the market for an AC capacitor in Kurla'));
+    assert.strictEqual(first.status, 200);
+    const posted = first.body.actions.find(a => a.type === 'open_request');
+    assert.ok(posted && /^req_/.test(posted.id));
+    const result1 = calls[1].body.contents.at(-1).parts[0].functionResponse.response.result;
+    assert.strictEqual(result1.shops_asked_across_mumbai, 14);
+    t = 120000;
+    const second = await call('POST', '/api/agent', Object.assign(say('Read me the offers'), { requests: [{ id: posted.id, part_name: posted.part_name }] }));
+    assert.strictEqual(second.status, 200);
+    assert.strictEqual(second.body.reply, 'Here are the offers.');
+    assert.match(calls[2].body.systemInstruction.parts[0].text, new RegExp(posted.id));
+    const offers = calls[3].body.contents.at(-1).parts[0].functionResponse.response.result;
+    assert.strictEqual(offers.error, undefined);
+    assert.strictEqual(offers.request.id, posted.id);
+    assert.ok(offers.summary.have_it > 0);
+    assert.strictEqual(calls[6].body.toolConfig.functionCallingConfig.mode, 'AUTO');
+    assert.strictEqual(calls[7].body.toolConfig.functionCallingConfig.mode, 'NONE');
+  });
+  const p = A.systemPrompt('find', [{ id: 'req_abcdef', part_name: 'AC capacitor' }]);
+  assert.match(p, /req_abcdef: AC capacitor/);
+  assert.match(p, /Never post a new request unless/);
+  assert.match(A.systemPrompt('find', []), /No request has been posted/);
 }));
