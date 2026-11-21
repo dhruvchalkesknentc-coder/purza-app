@@ -6,7 +6,7 @@ const FEES = D.FEES;
 const PART_BY_ID = Object.fromEntries(D.PARTS.map(p => [p.id, p]));
 const DEMO_BY_ID = Object.fromEntries(D.DEMO_SHOPS.map(s => [s.id, s]));
 const CAT_LIST = Object.keys(D.CATEGORIES);
-const MARKETS = ['Lohar Chawl', 'Lamington Road', 'Grant Road', 'Other Mumbai'];
+const MARKETS = D.AREAS.map(a => a.name).concat(['Other Mumbai']);
 const CAT_SHORT = { ac: 'AC', fan: 'FAN', mixer: 'MIX', washer: 'WM', geyser: 'GYS', fridge: 'FRG', general: 'PART' };
 
 function inr(n) { return '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN'); }
@@ -204,4 +204,26 @@ function timeAgo(ms, now) {
   return Math.round(h / 24) + ' d ago';
 }
 
-module.exports = { D, FEES, PART_BY_ID, DEMO_BY_ID, CAT_LIST, MARKETS, inr, clip, num, householdFee, priceStats, demoBands, shopFits, makeDemoReplies, rankOffers, bestReason, totals, pickupCode, fairCheck, searchParts, matchPartFromText, customPart, validateOffer, validateShop, suggestPrices, carSearch, timeAgo };
+// Mumbai areas: match what a buyer types ("Andheri West", "kandivli", "Mira Rd E") to an area.
+function normArea(t) { return ' ' + String(t || '').toLowerCase().replace(/\brd\b/g, 'road').replace(/[^a-z]+/g, ' ').replace(/\b(east|west|e|w|mumbai|station)\b/g, ' ').replace(/\s+/g, ' ').trim() + ' '; }
+function findArea(text) {
+  const t = normArea(text);
+  if (t.trim().length < 3) return null;
+  const names = a => [a.name].concat(a.aka || []).map(normArea);
+  return D.AREAS.find(a => names(a).includes(t))
+    || D.AREAS.find(a => names(a).some(n => t.includes(n)))
+    || D.AREAS.find(a => names(a).some(n => n.trim().startsWith(t.trim())))
+    || null;
+}
+// Shops near a buyer: public listings (and any extra shops passed in) in the same area, else the rest of that zone.
+function shopsNear(text, extra) {
+  const area = findArea(text);
+  if (!area) return null;
+  const all = D.PUBLIC_LISTINGS.concat(extra || []);
+  const here = all.filter(l => (l.area || l.market) === area.name);
+  if (here.length) return { area, exact: true, shops: here };
+  const zone = all.filter(l => (l.zone || (D.AREAS.find(a => a.name === (l.area || l.market)) || {}).zone) === area.zone);
+  return { area, exact: false, shops: zone };
+}
+
+module.exports = { D, FEES, PART_BY_ID, DEMO_BY_ID, CAT_LIST, MARKETS, inr, clip, num, householdFee, priceStats, demoBands, shopFits, makeDemoReplies, rankOffers, bestReason, totals, pickupCode, fairCheck, searchParts, matchPartFromText, customPart, validateOffer, validateShop, suggestPrices, carSearch, timeAgo, findArea, shopsNear };
