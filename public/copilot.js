@@ -18,6 +18,12 @@
 
   function load() { try { const v = JSON.parse(sessionStorage.getItem(KEY)); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
   function save() { try { sessionStorage.setItem(KEY, JSON.stringify(msgs.slice(-30))); } catch (e) { /* private mode */ } }
+  // Requests the copilot posted in this chat, newest first, so it can read their offers later.
+  function recentRequests() {
+    const out = [];
+    for (const m of msgs.slice().reverse()) for (const q of (m.reqs || [])) if (!out.some(o => o.id === q.id)) out.push(q);
+    return out.slice(0, 5);
+  }
 
   // A little markdown: paragraphs, bullet and numbered lists, **bold**. Everything is escaped first.
   function fmt(text) {
@@ -73,11 +79,12 @@
       const view = (location.hash || '#find').slice(1);
       const r = await fetch('/api/agent', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ view, messages: msgs.filter(m => !m.error).map(m => ({ role: m.role, text: m.text })) })
+        body: JSON.stringify({ view, requests: recentRequests(), messages: msgs.filter(m => !m.error).map(m => ({ role: m.role, text: m.text })) })
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || 'The copilot is not answering (' + r.status + ').');
-      msgs.push({ role: 'assistant', text: data.reply, used: data.tools_used || [] });
+      const reqs = (data.actions || []).filter(a => a.type === 'open_request' && a.id).map(a => ({ id: a.id, part_name: a.part_name }));
+      msgs.push({ role: 'assistant', text: data.reply, used: data.tools_used || [], reqs });
       busy = false; render(); save();
       apply(data.actions || []);
     } catch (e) {
