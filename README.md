@@ -10,13 +10,22 @@ You need **Node.js 22.13 or newer** (it uses the built-in `node:sqlite`). Nothin
 
 ```bash
 npm start            # http://localhost:3000
-npm test             # 15 tests: API flow, security checks, business rules
+npm test             # 22 tests: API flow, photo check, security checks, business rules
 ```
 
 - **Try it on two devices:** start the server on your laptop and open `http://<your-laptop-ip>:3000/#shop` on your phone (same Wi-Fi). Add a shop on the phone, post a request from the laptop, reply from the phone.
 - **Fresh start:** `npm run reset-db` deletes the local database; the next start reloads the collected data.
 - **Docker:** `docker build -t purza . && docker run -p 3000:3000 -v purza-data:/data purza`
-- Settings (all optional) are in `.env.example`: `PORT`, `PURZA_DB`, `CORS_ORIGIN`, rate limits, `PAYMENTS_MODE`.
+- Settings (all optional) are in `.env.example`: `PORT`, `PURZA_DB`, `CORS_ORIGIN`, rate limits, `PAYMENTS_MODE`, and the AI keys below.
+
+## Photo check (AI)
+
+A buyer can add a photo and AI works out which part it is. Set one key on the server and the "Add a photo" button appears:
+
+- `GEMINI_API_KEY`: free key from Google AI Studio (aistudio.google.com/apikey). Uses `gemini-3.5-flash-lite`, then `gemini-3.1-flash-lite` if the first is retired; change with `GEMINI_MODEL`. On the free tier Google may use what you send to improve its products.
+- `ANTHROPIC_API_KEY`: Claude key from console.anthropic.com (paid). Uses `claude-haiku-5-5`; change with `ANTHROPIC_MODEL`.
+
+Photos are shrunk on the phone, sent once for the check and not stored. `POST /api/identify` is limited to 6 checks a minute per visitor (`IDENTIFY_PER_MINUTE`) to protect the free quota.
 
 ## What's inside
 
@@ -25,6 +34,7 @@ src/server.js       API + static website (node:http), security headers, rate lim
 src/db.js           opens SQLite, applies the schema, loads the collected data on first run
 src/logic.js        business rules: fees, ranking, price checks, demo-shop replies, part search
 src/payments.js     UPI payment step (demo mode until a gateway is connected)
+src/identify.js     photo check: Gemini (free tier) or Claude works out the part from a photo
 db/schema.sql       SQLite schema used by the app
 db/schema.postgres.sql  the same tables for PostgreSQL
 public/             the website: Find a part, Shop desk, Price guide, Markets, AI buyers, Car parts preview
@@ -83,7 +93,7 @@ Collected on 20 Nov 2026 from public web pages. Every row in `data/` has its sou
 
 1. **Payments.** Replace `createPaymentLink()` in `src/payments.js` with a Razorpay or Cashfree payment-link call, and mark orders paid from the gateway's signed webhook instead of `/pay`. Set `PAYMENTS_MODE=live`.
 2. **Shop sign-in.** Swap the shop token for phone-number OTP login, and send new requests to shops on WhatsApp (Business API) so they can reply without opening the site.
-3. **Photos and AI.** Add photo upload and a vision model to identify the part from a picture (the hosted demo does this).
+3. **Photos for shops.** The photo check is built in; next, keep the buyer's photo so shops can see it too (needs file storage such as S3 or Cloudinary).
 4. **Hosting.** Any Node host with a persistent disk (Railway, Render, Fly.io, a small VPS). Move to PostgreSQL with `db/schema.postgres.sql` when you run more than one server.
 5. **Car parts.** License a fitment catalogue (ACES-style data) before the car phase.
 
