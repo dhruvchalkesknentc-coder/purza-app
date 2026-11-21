@@ -441,6 +441,33 @@ function renderCurl() {
   $('curl').textContent = '# 1. find the part\ncurl "' + o + '/api/parts?q=geyser%20not%20heating"\n\n# 2. ask every matching shop\ncurl -X POST ' + o + '/api/requests \\\n  -H "Content-Type: application/json" \\\n  -d \'{"part_id":"geyser-element","persona":"home","prefer":"genuine","delivery":"deliver","area":"Andheri West","max_price_inr":700,"via":"agent"}\'\n\n# 3. read ranked offers (poll for about a minute)\ncurl ' + o + '/api/requests/REQUEST_ID\n\n# 4. reserve the best one\ncurl -X POST ' + o + '/api/requests/REQUEST_ID/reserve \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer BUYER_TOKEN" \\\n  -d \'{"shop_id":"SHOP_ID"}\'';
 }
 
+// ---------- hooks for the copilot panel (public/copilot.js) ----------
+window.PurzaUI = {
+  show(a) {
+    if (!VIEWS.includes(a.view)) return;
+    if (a.view === 'markets' && a.zone) { S.listingZone = a.zone; S.listingArea = a.area || 'All'; renderListings(); }
+    if (a.view === 'find' && a.area) { $('area').value = a.area; renderNear(); }
+    if (a.part_id && partById(a.part_id)) {
+      if (a.view === 'find') { $('part').value = a.part_id; renderGuideCard(); }
+      if (a.view === 'prices') { S.guideQ = ''; $('guide-q').value = ''; S.guideCat = 'all'; S.guideOpen.add(a.part_id); renderGuide(); }
+    }
+    if (location.hash !== '#' + a.view) location.hash = '#' + a.view; else route();
+    setTimeout(() => {
+      const el = a.view === 'markets' && a.zone ? $('listing-cover') : a.view === 'prices' && a.part_id ? document.querySelector('#guide-table button[data-part="' + a.part_id + '"]') : null;
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+  },
+  openRequest(a) {
+    if (!a || !a.id) return;
+    if (!S.mine.some(m => m.id === a.id)) {
+      S.mine.unshift({ id: a.id, token: a.token, part_name: a.part_name, created_at: a.created_at || Date.now() });
+      S.mine = S.mine.slice(0, 30); store.set('purza.requests', S.mine);
+    }
+    if (location.hash !== '#find') location.hash = '#find';
+    openRequest(a.id);
+  }
+};
+
 // ---------- start ----------
 function bind() {
   window.addEventListener('hashchange', route);
