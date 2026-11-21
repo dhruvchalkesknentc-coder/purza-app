@@ -38,7 +38,8 @@ CREATE INDEX IF NOT EXISTS idx_price_listings_part ON price_listings(part_id);
 CREATE TABLE IF NOT EXISTS public_listings (
   id          INTEGER PRIMARY KEY,
   name        TEXT NOT NULL,
-  market      TEXT NOT NULL,
+  market      TEXT NOT NULL,              -- the Mumbai area, e.g. Kandivali
+  zone        TEXT NOT NULL DEFAULT '',   -- South Mumbai, Western Suburbs, ...
   address     TEXT NOT NULL,
   sells       TEXT NOT NULL,
   source_name TEXT NOT NULL,
