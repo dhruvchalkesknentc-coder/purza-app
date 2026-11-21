@@ -60,7 +60,8 @@ const TOOLS = [
     }, ['view']) }
 ];
 
-function systemPrompt(view) {
+function systemPrompt(view, requests) {
+  requests = requests || [];
   const D = L.D, F = D.FEES;
   const facts = D.FACTS.map(f => '- ' + f.stat + ' ' + f.label + ' (' + f.source + ')').join('\n');
   return [
@@ -75,7 +76,8 @@ function systemPrompt(view) {
     '- Use the tools for every price, shop, count or request. Never guess a number. When you quote a market figure, name its source.',
     '- When you talk about something the site shows, also call show_on_screen so the audience sees it (for example shops in Andheri: markets tab filtered to Andheri).',
     '- Be honest about what is real and what is demo. Real: the price guide (Mumbai sellers\' listed prices with source links), ' + D.PUBLIC_LISTINGS.length + ' shops from public listings (not Purza partners), the market facts. Live: requests, shop sign-ups, replies and reservations are saved on the server (it is a free server, so data resets when it restarts). Demo: the ' + D.DEMO_SHOPS.length + ' auto-replying shops are invented, the UPI step moves no money, the car catalogue is a sample. Never present demo shops as real or listed shops as partners.',
-    '- Reserve only when the user clearly asks. After ask_market, say that replies take about a minute and offer to read them with get_offers.',
+    '- Reserve only when the user clearly asks. After ask_market, say that replies take about a minute and offer to read them out.',
+    '- Never name your tools or write code-style words in a reply; the audience sees your words on a big screen.',
     '- Questions outside Purza: answer in a line and bring it back to the demo.',
     '',
     'The site\'s tabs: 01 Find a part (ask the market, live offers, photo check), 02 Shop desk (a shop joins and replies from its phone), 03 Price guide, 04 Markets (shops by Mumbai area), 05 AI buyers (four API calls and llms.txt for AI agents), 06 Car parts (preview), 07 Why Purza (facts and business model).',
@@ -93,7 +95,11 @@ function systemPrompt(view) {
     'Market facts you may quote (with source):',
     facts,
     '',
-    'The presenter currently has the "' + view + '" tab open.'
+    'The presenter currently has the "' + view + '" tab open.',
+    '',
+    requests.length
+      ? 'Requests you posted in this chat, newest first:\n' + requests.map(r => '- ' + r.id + ': ' + r.part_name).join('\n') + '\nWhen asked about offers or reserving, use the newest one unless the user names another. Never post a new request unless the user asks for a new one.'
+      : 'No request has been posted in this chat yet. Post one only when the user asks you to ask the market.'
   ].join('\n');
 }
 
@@ -113,6 +119,17 @@ function cleanMessages(list) {
   return out;
 }
 
+// Requests the panel says the copilot posted earlier in this chat: [{id, part_name}], newest first.
+function cleanRequests(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const r of list.slice(0, 5)) {
+    if (!r || typeof r.id !== 'string' || !/^req_[A-Za-z0-9_-]{4,40}$/.test(r.id) || out.some(o => o.id === r.id)) continue;
+    out.push({ id: r.id, part_name: String(r.part_name || 'part').replace(/\s+/g, ' ').slice(0, 100) });
+  }
+  return out;
+}
+
 async function check(res, who) {
   if (res.ok) return;
   const body = (await res.text().catch(() => '')).slice(0, 300);
@@ -123,14 +140,15 @@ async function check(res, who) {
   throw httpError(502, 'The copilot could not get an answer from ' + who + '. Try again.');
 }
 
-async function runClaude(msgs, view, exec, fetchImpl) {
+async function runClaude(msgs, system, exec, fetchImpl) {
   const messages = msgs.map(m => ({ role: m.role, content: m.text }));
   const tools = TOOLS.map(t => ({ name: t.name, description: t.description, input_schema: t.schema }));
   for (let step = 0; step < MAX_STEPS; step++) {
     const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: model(), max_tokens: 1024, system: systemPrompt(view), tools, messages }),
+      // On the last round tools are switched off, so the model has to answer with what it has.
+      body: JSON.stringify(Object.assign({ model: model(), max_tokens: 1024, system, tools, messages }, step === MAX_STEPS - 1 ? { tool_choice: { type: 'none' } } : {})),
       signal: AbortSignal.timeout(TIMEOUT_MS)
     });
     await check(res, 'Claude');
@@ -147,7 +165,7 @@ async function runClaude(msgs, view, exec, fetchImpl) {
   return 'That took more steps than I allow for one answer. Try asking for one thing at a time.';
 }
 
-async function runGemini(msgs, view, exec, fetchImpl) {
+async function runGemini(msgs, system, exec, fetchImpl) {
   const contents = msgs.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.text }] }));
   // Gemini refuses an OBJECT schema with no properties, so a tool without inputs sends no parameters.
   const declarations = TOOLS.map(t => Object.keys(t.schema.properties).length ? { name: t.name, description: t.description, parameters: t.schema } : { name: t.name, description: t.description });
@@ -158,9 +176,10 @@ async function runGemini(msgs, view, exec, fetchImpl) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt(view) }] },
+        systemInstruction: { parts: [{ text: system }] },
         contents,
         tools: [{ functionDeclarations: declarations }],
+        toolConfig: { functionCallingConfig: { mode: step === MAX_STEPS - 1 ? 'NONE' : 'AUTO' } },
         generationConfig: { temperature: 0.4, maxOutputTokens: 1024 }
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS)
@@ -191,7 +210,9 @@ async function run(body, tools, fetchImpl) {
   if (!p) throw httpError(503, 'The copilot is switched off on this server. Add ANTHROPIC_API_KEY (Claude) or GEMINI_API_KEY.');
   const msgs = cleanMessages(body && body.messages);
   const view = VIEWS.includes(body.view) ? body.view : 'find';
-  const ctx = { actions: [], used: [] };
+  const requests = cleanRequests(body.requests);
+  const system = systemPrompt(view, requests);
+  const ctx = { actions: [], used: [], requests };
   const exec = async (name, args) => {
     ctx.used.push(name);
     const fn = Object.prototype.hasOwnProperty.call(tools, name) ? tools[name] : null;
@@ -200,7 +221,7 @@ async function run(body, tools, fetchImpl) {
     catch (e) { return { error: e.message || 'That did not work' }; }
   };
   let reply;
-  try { reply = p === 'claude' ? await runClaude(msgs, view, exec, fetchImpl) : await runGemini(msgs, view, exec, fetchImpl); }
+  try { reply = p === 'claude' ? await runClaude(msgs, system, exec, fetchImpl) : await runGemini(msgs, system, exec, fetchImpl); }
   catch (e) {
     if (e && (e.name === 'TimeoutError' || e.name === 'AbortError')) throw httpError(504, 'The AI took too long to answer. Try again.');
     if (e && e.status) throw e;
@@ -210,4 +231,4 @@ async function run(body, tools, fetchImpl) {
   return { reply: reply || 'Done.', actions: ctx.actions, tools_used: ctx.used, provider: p, model: model() };
 }
 
-module.exports = { run, provider, model, systemPrompt, cleanMessages, TOOLS, VIEWS, CLAUDE_AGENT_MODEL };
+module.exports = { run, provider, model, systemPrompt, cleanMessages, cleanRequests, TOOLS, VIEWS, CLAUDE_AGENT_MODEL };
