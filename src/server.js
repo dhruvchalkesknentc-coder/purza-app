@@ -7,9 +7,11 @@ const crypto = require('node:crypto');
 const { openDb, tx } = require('./db');
 const L = require('./logic');
 const payments = require('./payments');
+const photoCheck = require('./identify');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const MAX_BODY = 32 * 1024;
+const MAX_PHOTO_BODY = 6 * 1024 * 1024;
 const INBOX_DAYS = 7;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8', '.txt': 'text/plain; charset=utf-8' };
 const SECURITY_HEADERS = {
@@ -17,7 +19,7 @@ const SECURITY_HEADERS = {
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 };
 
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
@@ -105,6 +107,7 @@ function createApp(opts = {}) {
   const db = openDb(opts.dbFile || process.env.PURZA_DB || path.join(__dirname, '..', 'data', 'purza.db'));
   const now = opts.now || (() => Date.now());
   const corsOrigin = opts.corsOrigin || process.env.CORS_ORIGIN || '*';
+  const allowIdentify = rateLimiter(opts.identifyPerMinute || Number(process.env.IDENTIFY_PER_MINUTE) || 6);
   const allowWrite = rateLimiter(opts.writesPerMinute || Number(process.env.WRITES_PER_MINUTE) || 60);
   const allowRead = rateLimiter(opts.readsPerMinute || Number(process.env.READS_PER_MINUTE) || 1200);
   const S = statements(db);
@@ -216,9 +219,10 @@ function createApp(opts = {}) {
 
   route('GET', '/api', () => ({
     name: 'Purza API', docs: '/llms.txt',
-    endpoints: ['GET /api/health', 'GET /api/categories', 'GET /api/parts?q=&category=', 'GET /api/parts/:id', 'GET /api/listings', 'GET /api/facts', 'GET /api/shops', 'POST /api/shops', 'GET /api/shop/inbox', 'POST /api/requests', 'GET /api/requests?status=open', 'GET /api/requests/:id', 'POST /api/requests/:id/offers', 'POST /api/requests/:id/reserve', 'POST /api/requests/:id/pay', 'POST /api/requests/:id/cancel', 'GET /api/vehicles', 'GET /api/search?part=&year=&make=&model=']
+    endpoints: ['GET /api/health', 'POST /api/identify', 'GET /api/categories', 'GET /api/parts?q=&category=', 'GET /api/parts/:id', 'GET /api/listings', 'GET /api/facts', 'GET /api/shops', 'POST /api/shops', 'GET /api/shop/inbox', 'POST /api/requests', 'GET /api/requests?status=open', 'GET /api/requests/:id', 'POST /api/requests/:id/offers', 'POST /api/requests/:id/reserve', 'POST /api/requests/:id/pay', 'POST /api/requests/:id/cancel', 'GET /api/vehicles', 'GET /api/search?part=&year=&make=&model=']
   }));
-  route('GET', '/api/health', () => ({ ok: true, time: new Date(now()).toISOString(), payments: payments.MODE }));
+  route('GET', '/api/health', () => ({ ok: true, time: new Date(now()).toISOString(), payments: payments.MODE, ai: photoCheck.provider() }));
+  route('POST', '/api/identify', ({ body }) => photoCheck.identify(body, opts.identifyFetch || fetch));
   route('GET', '/api/categories', () => ({ appliance: S.categories.all(), car: S.carCategories.all() }));
   route('GET', '/api/parts', ({ query }) => {
     const q = str(query.get('q'), 80, 'q');
@@ -352,7 +356,7 @@ function createApp(opts = {}) {
     res.writeHead(status, Object.assign({ 'Content-Type': typeof body === 'string' ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, SECURITY_HEADERS, extra));
     res.end(payload);
   }
-  function readBody(req) {
+  function readBody(req, max = MAX_BODY) {
     return new Promise((resolve, reject) => {
       if (req.method !== 'POST') return resolve({});
       if (!/^application\/json\b/i.test(req.headers['content-type'] || '')) return reject(new HttpError(415, 'Send JSON with Content-Type: application/json'));
@@ -360,7 +364,7 @@ function createApp(opts = {}) {
       req.on('data', c => {
         if (tooBig) return; // keep draining, but stop storing
         size += c.length;
-        if (size > MAX_BODY) { tooBig = true; chunks.length = 0; reject(new HttpError(413, 'Body too large')); } else chunks.push(c);
+        if (size > max) { tooBig = true; chunks.length = 0; reject(new HttpError(413, 'Body too large')); } else chunks.push(c);
       });
       req.on('end', () => {
         if (tooBig) return;
@@ -394,14 +398,15 @@ function createApp(opts = {}) {
     }
     const cors = { 'Access-Control-Allow-Origin': corsOrigin, 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Vary': 'Origin' };
     if (req.method === 'OPTIONS') { res.writeHead(204, Object.assign(cors, SECURITY_HEADERS)); return res.end(); }
+    if (url.pathname === '/api/identify' && req.method === 'POST' && !allowIdentify(ip)) return send(res, 429, { error: 'Too many photo checks. Wait a minute, or pick the part from the list.' }, Object.assign({ 'Retry-After': '60' }, cors));
     if (!(req.method === 'GET' ? allowRead(ip) : allowWrite(ip))) return send(res, 429, { error: 'Too many requests. Wait a minute.' }, Object.assign({ 'Retry-After': '60' }, cors));
     for (const r of routes) {
       if (r.method !== req.method) continue;
       const m = r.re.exec(url.pathname);
       if (!m) continue;
       try {
-        const body = await readBody(req);
-        const out = r.fn({ req, params: m.groups || {}, query: url.searchParams, body });
+        const body = await readBody(req, url.pathname === '/api/identify' ? MAX_PHOTO_BODY : MAX_BODY);
+        const out = await r.fn({ req, params: m.groups || {}, query: url.searchParams, body });
         if (out && out.status && out.body) return send(res, out.status, out.body, cors);
         return send(res, 200, out, cors);
       } catch (e) {
