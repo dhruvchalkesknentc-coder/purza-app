@@ -42,8 +42,8 @@ function seed(db) {
       for (const c of s.cats) shopCat.run(s.id, c);
     }
 
-    const pl = db.prepare('INSERT INTO public_listings (name, market, address, sells, source_name, source_url) VALUES (?, ?, ?, ?, ?, ?)');
-    for (const l of D.PUBLIC_LISTINGS) pl.run(l.name, l.market, l.address, l.sells, l.source, l.url);
+    const pl = db.prepare('INSERT INTO public_listings (name, market, zone, address, sells, source_name, source_url) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    for (const l of D.PUBLIC_LISTINGS) pl.run(l.name, l.market, l.zone, l.address, l.sells, l.source, l.url);
 
     const fact = db.prepare('INSERT INTO facts (grp, stat, label, detail, source, url) VALUES (?, ?, ?, ?, ?, ?)');
     for (const f of D.FACTS) fact.run(f.group, f.stat, f.label, f.detail, f.source, f.url);
