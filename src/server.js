@@ -6,6 +6,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { openDb, tx } = require('./db');
 const L = require('./logic');
+const D_ZONES = L.D.ZONES;
+const D_AREAS = L.D.AREAS.map(a => ({ name: a.name, zone: a.zone, aka: a.aka || [] }));
 const payments = require('./payments');
 const photoCheck = require('./identify');
 
@@ -91,7 +93,7 @@ function statements(db) {
     cancel: p("UPDATE requests SET status = 'cancelled' WHERE id = ? AND status IN ('open', 'reserved')"),
     inbox: p(`SELECT * FROM requests WHERE status = 'open' AND created_at > ? AND (category = 'general' OR category IN (SELECT category FROM shop_categories WHERE shop_id = ?)) ORDER BY created_at DESC LIMIT 50`),
     orders: p("SELECT * FROM requests WHERE reserved_shop_id = ? AND status IN ('reserved', 'paid') ORDER BY reserved_at DESC LIMIT 50"),
-    listings: p('SELECT name, market, address, sells, source_name, source_url FROM public_listings ORDER BY market, name'),
+    listings: p('SELECT name, market AS area, zone, address, sells, source_name, source_url FROM public_listings ORDER BY zone, market, name'),
     facts: p('SELECT grp AS "group", stat, label, detail, source, url FROM facts ORDER BY id'),
     vehicles: p('SELECT id, year, make, model, trim FROM vehicles ORDER BY make, model, year'),
     carSearch: p(`SELECT DISTINCT p.id, p.part_number, p.name, p.description, p.brand, p.price, c.name AS category
@@ -219,7 +221,7 @@ function createApp(opts = {}) {
 
   route('GET', '/api', () => ({
     name: 'Purza API', docs: '/llms.txt',
-    endpoints: ['GET /api/health', 'POST /api/identify', 'GET /api/categories', 'GET /api/parts?q=&category=', 'GET /api/parts/:id', 'GET /api/listings', 'GET /api/facts', 'GET /api/shops', 'POST /api/shops', 'GET /api/shop/inbox', 'POST /api/requests', 'GET /api/requests?status=open', 'GET /api/requests/:id', 'POST /api/requests/:id/offers', 'POST /api/requests/:id/reserve', 'POST /api/requests/:id/pay', 'POST /api/requests/:id/cancel', 'GET /api/vehicles', 'GET /api/search?part=&year=&make=&model=']
+    endpoints: ['GET /api/health', 'POST /api/identify', 'GET /api/categories', 'GET /api/parts?q=&category=', 'GET /api/parts/:id', 'GET /api/listings?area=', 'GET /api/areas', 'GET /api/facts', 'GET /api/shops', 'POST /api/shops', 'GET /api/shop/inbox', 'POST /api/requests', 'GET /api/requests?status=open', 'GET /api/requests/:id', 'POST /api/requests/:id/offers', 'POST /api/requests/:id/reserve', 'POST /api/requests/:id/pay', 'POST /api/requests/:id/cancel', 'GET /api/vehicles', 'GET /api/search?part=&year=&make=&model=']
   }));
   route('GET', '/api/health', () => ({ ok: true, time: new Date(now()).toISOString(), payments: payments.MODE, ai: photoCheck.provider() }));
   route('POST', '/api/identify', ({ body }) => photoCheck.identify(body, opts.identifyFetch || fetch));
@@ -236,7 +238,14 @@ function createApp(opts = {}) {
     if (!row) fail(404, 'No such part');
     return partView(row);
   });
-  route('GET', '/api/listings', () => ({ note: 'Real businesses from public directories. Not Purza partners.', listings: S.listings.all() }));
+  route('GET', '/api/listings', ({ query }) => {
+    const all = S.listings.all().map(l => Object.assign({ market: l.area }, l));
+    const areaQ = str(query.get('area'), 40, 'area');
+    const near = areaQ ? L.shopsNear(areaQ) : null;
+    const rows = near ? all.filter(l => near.shops.some(s => s.name === l.name)) : all;
+    return { note: 'Real businesses from public directories, by Mumbai area. Not Purza partners.', zones: D_ZONES, areas: D_AREAS, near: near ? { area: near.area.name, zone: near.area.zone, exact: near.exact } : undefined, listings: rows };
+  });
+  route('GET', '/api/areas', () => ({ zones: D_ZONES, areas: D_AREAS }));
   route('GET', '/api/facts', () => ({ facts: S.facts.all() }));
   route('GET', '/api/shops', () => ({ shops: S.shops.all().map(shopView) }));
   route('POST', '/api/shops', ({ body }) => {
@@ -426,7 +435,7 @@ function createApp(opts = {}) {
 
 function llmsTxt() {
   return `# Purza
-> Purza asks every appliance spare-parts shop in Mumbai's Lohar Chawl and Lamington Road markets at once. Shops reply with price, genuine or compatible, warranty and ready time. A buyer (or an AI agent acting for one) reserves the best offer and pays by UPI.
+> Purza asks every appliance spare-parts shop across Mumbai at once: Lohar Chawl and Lamington Road, and the suburbs from Andheri and Kandivali to Kurla, Thane and Vashi. Shops reply with price, genuine or compatible, warranty and ready time. A buyer (or an AI agent acting for one) reserves the best offer and pays by UPI.
 
 ## For AI agents
 1. Find the part: GET /api/parts?q=geyser%20not%20heating  -> parts[].id, prices listed online, what shops must check
@@ -442,7 +451,8 @@ function llmsTxt() {
 - Fees: households pay Rs 29 for parts under Rs 500 and Rs 49 above; nothing if no shop has it. Delivery Rs 60. Technicians on Purza Pro pay no per-order fee.
 
 ## Other endpoints
-- GET /api/listings: real shops from public listings (not Purza partners)
+- GET /api/listings?area=Kandivali: real shops from public listings by Mumbai area (not Purza partners); without area, all of them
+- GET /api/areas: Mumbai zones and areas
 - GET /api/facts: market facts with sources
 - GET /api/search?part=brake&year=2021&make=Maruti%20Suzuki&model=Swift: car parts preview (sample catalogue)
 `;
