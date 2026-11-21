@@ -27,6 +27,16 @@ A buyer can add a photo and AI works out which part it is. Set one key on the se
 
 Photos are shrunk on the phone, sent once for the check and not stored. `POST /api/identify` is limited to 6 checks a minute per visitor (`IDENTIFY_PER_MINUTE`) to protect the free quota.
 
+## Copilot (AI)
+
+The "Ask Copilot" button in the corner opens a chat that runs the demo with you. It answers from the live data and can drive the site: ask the market for a part (offers arrive on the Find tab), read and reserve offers, look up shops in any Mumbai area, pull prices with sources, and switch tabs so the audience sees what it is talking about.
+
+- Runs on **Claude** when `ANTHROPIC_API_KEY` is set (model `claude-sonnet-5-5`; change with `ANTHROPIC_AGENT_MODEL`).
+- Otherwise runs on the free Gemini key (`GEMINI_API_KEY`), and the panel says "Gemini".
+- With neither key, the button stays hidden.
+
+`POST /api/agent` takes `{ "view": "find", "messages": [{ "role": "user", "text": "..." }] }` and returns `{ reply, actions, tools_used, provider, model }`. It is limited to 15 messages a minute per visitor (`AGENT_PER_MINUTE`). The agent can only reserve requests it posted itself, and payments stay in demo mode.
+
 ## What's inside
 
 ```
@@ -35,6 +45,7 @@ src/db.js           opens SQLite, applies the schema, loads the collected data o
 src/logic.js        business rules: fees, ranking, price checks, demo-shop replies, part search
 src/payments.js     UPI payment step (demo mode until a gateway is connected)
 src/identify.js     photo check: Gemini (free tier) or Claude works out the part from a photo
+src/agent.js        Purza Copilot: Claude (or Gemini) chat agent with tools over the live data
 db/schema.sql       SQLite schema used by the app
 db/schema.postgres.sql  the same tables for PostgreSQL
 public/             the website: Find a part, Shop desk, Price guide, Markets, AI buyers, Car parts preview
