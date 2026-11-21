@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Purza · Appliance spare parts from Mumbai's markets</title>
-<meta name="description" content="Ask every appliance spare-parts shop in Lohar Chawl and Lamington Road at once. Compare price, genuine or compatible, warranty and ready time. Reserve and pay by UPI.">
+<meta name="description" content="Ask every appliance spare-parts shop across Mumbai at once, from Lohar Chawl and Lamington Road to Andheri, Kandivali, Kurla and Thane. Compare price, genuine or compatible, warranty and ready time. Reserve and pay by UPI.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -42,7 +42,7 @@
       <div class="view-head">
         <div>
           <h2 id="h-find">Ask every parts shop in the market at once</h2>
-          <p>Name the part or describe what's broken. Shops reply with the price, genuine or compatible, warranty and when it's ready. Reserve the best one and pay by UPI.</p>
+          <p>Name the part or describe what's broken. Parts shops across Mumbai, from Lohar Chawl and Lamington Road to Andheri, Kandivali, Kurla and Thane, reply with the price, genuine or compatible, warranty and when it's ready. Reserve the best one and pay by UPI.</p>
         </div>
         <button class="btn ghost" id="fill-demo" type="button">Fill an example</button>
       </div>
@@ -75,8 +75,9 @@
           </div>
           <div class="row2">
             <div class="field"><label for="sticker">Model on the sticker</label><input id="sticker" maxlength="60" autocomplete="off" placeholder="e.g. Voltas 1.5 T"></div>
-            <div class="field"><label for="area">Your area</label><input id="area" maxlength="40" autocomplete="off" placeholder="e.g. Kurla"></div>
+            <div class="field"><label for="area">Your area in Mumbai</label><input id="area" list="area-list" maxlength="40" autocomplete="off" placeholder="e.g. Kandivali, Andheri, Kurla"><datalist id="area-list"></datalist></div>
           </div>
+          <div class="near small" id="near-shops" hidden></div>
           <div class="field">
             <span class="flabel">What matters most</span>
             <div class="seg" data-group="prefer">
@@ -135,14 +136,16 @@
     <section class="view" id="view-markets" aria-labelledby="h-markets">
       <div class="view-head">
         <div>
-          <h2 id="h-markets">The markets and the shops in them</h2>
-          <p>Shops that join on the Shop desk appear first. Below them, real businesses from public listings: not Purza partners, but the first doors to knock on.</p>
+          <h2 id="h-markets">Mumbai's parts shops, area by area</h2>
+          <p>Lohar Chawl and Lamington Road are the city's wholesale markets, and every suburb from Andheri and Kandivali to Kurla, Chembur, Thane and Vashi has its own AC, fridge and washing-machine parts dealers. Shops that join on the Shop desk appear first. Below them, real businesses from public listings: not Purza partners, but the first doors to knock on.</p>
         </div>
       </div>
       <h3 class="section-title">Shops on Purza</h3>
       <div class="card tbl-wrap" id="purza-shops"></div>
       <h3 class="section-title">Real shops from public listings <span class="tag warn">not Purza partners</span></h3>
+      <p class="small" id="listing-cover" style="margin-bottom:6px"></p>
       <div class="filters" id="listing-filter"></div>
+      <div class="filters sub" id="listing-areas" hidden></div>
       <div class="card tbl-wrap"><table id="listings"></table></div>
     </section>
 
@@ -204,7 +207,7 @@
     </section>
   </div>
 </main>
-<footer><div class="wrap">Purza · Prices and public listings collected 20 Nov 2026 · Demo shops are invented; payments run in demo mode until a UPI gateway is connected · <a href="/api">API</a> · <a href="/llms.txt">llms.txt</a></div></footer>
+<footer><div class="wrap">Purza · Mumbai prices and shop listings collected 20–21 Nov 2026 · Demo shops are invented; payments run in demo mode until a UPI gateway is connected · <a href="/api">API</a> · <a href="/llms.txt">llms.txt</a></div></footer>
 <div class="toast" id="toast" role="status"></div>
 <script src="/app.js"></script>
 <script src="/why.js"></script>
