@@ -403,15 +403,18 @@ function createApp(opts = {}) {
       copilotRequests.set(id, token);
       if (copilotRequests.size > 500) copilotRequests.delete(copilotRequests.keys().next().value);
       ctx.actions.push({ type: 'open_request', id, token, part_name: view.request.part_name, created_at: view.request.created_at });
-      return { request_id: id, part: view.request.part_name, area: view.request.area, shops_asked: view.summary.shops_asked, note: 'Posted and open on the Find tab. Replies arrive over about a minute; use get_offers to read them.' };
+      const purzaShops = view.summary.shops_asked - L.D.DEMO_SHOPS.length;
+      return { request_id: id, part: view.request.part_name, buyer_area: view.request.area, shops_asked_across_mumbai: view.summary.shops_asked, of_which_demo_shops: L.D.DEMO_SHOPS.length, of_which_purza_shops: purzaShops, note: 'Sent to every matching shop on Purza across Mumbai at once, not only shops in the buyer area. The demo shops are invented. Open on the Find tab. Replies arrive over about a minute; read them with get_offers.' };
     },
-    get_offers: ({ request_id }) => {
+    get_offers: ({ request_id }, ctx) => {
+      if (!request_id && ctx.requests.length) request_id = ctx.requests[0].id; // newest request from this chat
       const r = typeof request_id === 'string' && ID_RE.req.test(request_id) ? S.request.get(request_id) : null;
       if (!r) return { error: 'No such request' };
       const v = requestView(r);
       return { request: { id: r.id, part: r.part_name, area: r.area, prefer: r.prefer, status: r.status }, summary: v.summary, offers: v.offers.slice(0, 5), best_reason: v.best_reason, over_budget: v.over_budget, fees_if_best: v.fees_if_best, reserved: v.request.reserved };
     },
     reserve_offer: ({ request_id, shop_id }, ctx) => {
+      if (!request_id && ctx.requests.length) request_id = ctx.requests[0].id;
       const token = copilotRequests.get(request_id);
       if (!token) return { error: 'I can only reserve requests I posted myself. Use the Reserve button on the Find tab.' };
       const out = reserveOffer(S.request.get(request_id), shop_id);
