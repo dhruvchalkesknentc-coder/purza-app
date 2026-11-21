@@ -30,7 +30,14 @@ test('health, categories and seeded reference data', async () => {
   const parts = (await call('GET', '/api/parts')).body;
   assert.strictEqual(parts.count, 15);
   assert.ok(parts.parts.every(p => p.listings.every(l => /^https?:\/\//.test(l.url))));
-  assert.strictEqual((await call('GET', '/api/listings')).body.listings.length, 22);
+  const lst = (await call('GET', '/api/listings')).body;
+  assert.strictEqual(lst.listings.length, 72);
+  assert.ok(lst.areas.length >= 60 && lst.zones.includes('Western Suburbs'));
+  const kand = (await call('GET', '/api/listings?area=' + encodeURIComponent('Kandivali West'))).body;
+  assert.ok(kand.near.exact && kand.near.area === 'Kandivali' && kand.listings.length >= 2 && kand.listings.every(l => l.area === 'Kandivali'));
+  const bandra = (await call('GET', '/api/listings?area=Bandra')).body;
+  assert.ok(!bandra.near.exact && bandra.listings.length > 0 && bandra.listings.every(l => l.zone === 'Western Suburbs'));
+  assert.strictEqual((await call('POST', '/api/shops', { name: 'Kandivali Spares', market: 'Kandivali', categories: ['washer'] })).status, 201);
   assert.strictEqual((await call('GET', '/api/facts')).body.facts.length, 14);
 });
 
@@ -38,7 +45,7 @@ test('part search understands plain descriptions', async () => {
   const r = await call('GET', '/api/parts?q=' + encodeURIComponent('geyser not heating'));
   assert.strictEqual(r.body.parts[0].id, 'geyser-element');
   const one = await call('GET', '/api/parts/ac-capacitor');
-  assert.deepStrictEqual(one.body.listed_price_inr, { low: 150, high: 550 });
+  assert.deepStrictEqual(one.body.listed_price_inr, { low: 140, high: 450 });
   assert.strictEqual((await call('GET', '/api/parts/nope')).status, 404);
 });
 
